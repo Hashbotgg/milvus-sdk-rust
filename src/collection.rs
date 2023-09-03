@@ -137,6 +137,8 @@ impl Collection {
                     db_name: "".to_string(),
                     collection_name: self.schema().name.clone(),
                     replica_number,
+                    refresh: false,
+                    resource_groups: vec![]
                 })
                 .await?
                 .into_inner(),
@@ -352,9 +354,9 @@ impl Collection {
     }
 
     /// Load collection paritions into memory
-    pub async fn load_partitions<S: ToString, I: IntoIterator<Item = S>>(
+    pub async fn load_partitions<S: ToString, P: IntoIterator<Item = S>>(
         &self,
-        partition_names: I,
+        partition_names: P,
         replica_number: i32,
     ) -> Result<()> {
         let names: Vec<String> = partition_names.into_iter().map(|x| x.to_string()).collect();
@@ -367,6 +369,8 @@ impl Collection {
                     collection_name: self.schema().name.clone(),
                     replica_number,
                     partition_names: names.clone(),
+                    refresh: false,
+                    resource_groups: vec![],
                 })
                 .await?
                 .into_inner(),
@@ -393,6 +397,7 @@ impl Collection {
                 base: None,
                 collection_name: self.schema().name.to_string(),
                 partition_names: partition_names.into_iter().map(|x| x.to_string()).collect(),
+                db_name: "".to_string()
             })
             .await?
             .into_inner();
@@ -458,6 +463,7 @@ impl Collection {
                 collection_name: self.schema().name.to_string(),
                 schema: buf.to_vec(),
                 shards_num: shards_num.unwrap_or(1),
+                num_partitions: 0,
                 consistency_level: consistency_level.unwrap_or(ConsistencyLevel::Session) as i32,
                 properties: vec![],
             })
@@ -493,6 +499,7 @@ impl Collection {
                 travel_timestamp: 0,
                 guarantee_timestamp: self.get_gts_from_consistency(consistency_level).await,
                 query_params: Vec::new(),
+                ..Default::default()
             })
             .await?
             .into_inner();
@@ -609,6 +616,10 @@ impl Collection {
                 search_params,
                 travel_timestamp: 0,
                 guarantee_timestamp: self.get_gts_from_consistency(consistency_level).await,
+                consistency_level: consistency_level as _,
+                not_return_all_meta: false,
+                search_by_primary_keys: false,
+                use_default_consistency: false
             })
             .await?
             .into_inner();
@@ -729,6 +740,7 @@ impl Collection {
                 collection_name: self.schema().name.clone(),
                 field_name: field_name.into(),
                 index_name: "".to_string(),
+                timestamp: 0,
             })
             .await?
             .into_inner();

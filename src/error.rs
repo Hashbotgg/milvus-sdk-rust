@@ -64,7 +64,7 @@ pub enum Error {
 
 impl From<Status> for Error {
     fn from(s: Status) -> Self {
-        Error::Server(ErrorCode::from_i32(s.error_code).unwrap(), s.reason)
+        Error::Server(ErrorCode::try_from(s.error_code).unwrap(), s.reason)
     }
 }
 

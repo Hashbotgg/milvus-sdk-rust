@@ -14,9 +14,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::error;
+use crate::{error, proto::schema::ValueField};
 use crate::error::Result;
-use crate::proto::schema::FieldState;
+use crate::proto::schema::{FieldState, value_field};
 use prost::alloc::vec::Vec;
 use prost::encoding::bool;
 use thiserror::Error as ThisError;
@@ -145,6 +145,36 @@ pub trait IntoFieldData {
     fn into_data_fields(self) -> Vec<FieldData>;
 }
 
+macro_rules! impl_value_field {
+    ($typ: ty => $variant: ident) => {
+        impl Into<ValueField> for $typ {
+            fn into(self) -> ValueField {
+                ValueField {
+                    data: Some(value_field::Data::$variant(self))
+                }
+            }
+        }
+        impl TryFrom<ValueField> for $typ {
+            type Error = error::Error;
+            fn try_from(v: ValueField) -> Result<Self> {
+                match v.data {
+                    Some(value_field::Data::$variant(v)) => Ok(v),
+                    _ => Err(error::Error::from(error::Error::Conversion))
+                }
+            }
+        }
+    };
+}
+
+impl_value_field!(bool => BoolData);
+impl_value_field!(i32 => IntData);
+impl_value_field!(i64 => LongData);
+impl_value_field!(f32 => FloatData);
+impl_value_field!(f64 => DoubleData);
+impl_value_field!(String => StringData);
+impl_value_field!(Vec<u8> => BytesData);
+
+
 #[derive(Debug, Clone)]
 pub struct FieldSchema {
     pub name: String,
@@ -155,6 +185,9 @@ pub struct FieldSchema {
     pub chunk_size: usize,
     pub dim: i64,        // only for BinaryVector and FloatVector
     pub max_length: i32, // only for VarChar
+    pub is_dynamic: bool,
+    pub is_partition_key: bool,
+    pub default_value: Option<ValueField>
 }
 
 impl FieldSchema {
@@ -168,6 +201,9 @@ impl FieldSchema {
             chunk_size: 0,
             dim: 0,
             max_length: 0,
+            is_dynamic: false,
+            is_partition_key: false,
+            default_value: None
         }
     }
 }
@@ -187,7 +223,7 @@ impl From<schema::FieldSchema> for FieldSchema {
             .and_then(|x| x.value.parse().ok())
             .unwrap_or(1);
 
-        let dtype = DataType::from_i32(fld.data_type).unwrap();
+        let dtype = DataType::try_from(fld.data_type).unwrap();
 
         FieldSchema {
             name: fld.name,
@@ -202,12 +238,15 @@ impl From<schema::FieldSchema> for FieldSchema {
                     _ => dim,
                 }) as _,
             dim,
+            is_dynamic: fld.is_dynamic,
+            is_partition_key: fld.is_partition_key,
+            default_value: fld.default_value
         }
     }
 }
 
 impl FieldSchema {
-    pub fn new_bool(name: &str, description: &str) -> Self {
+    pub fn new_bool(name: &str, description: &str, default_value: Option<bool>) -> Self {
         Self {
             name: name.to_owned(),
             description: description.to_owned(),
@@ -217,10 +256,13 @@ impl FieldSchema {
             chunk_size: 1,
             dim: 1,
             max_length: 0,
+            is_dynamic: false,
+            is_partition_key: false,
+            default_value: default_value.map(|x| x.into())
         }
     }
 
-    pub fn new_int8(name: &str, description: &str) -> Self {
+    pub fn new_int8(name: &str, description: &str, default_value: Option<i8>) -> Self {
         Self {
             name: name.to_owned(),
             description: description.to_owned(),
@@ -230,10 +272,13 @@ impl FieldSchema {
             chunk_size: 1,
             dim: 1,
             max_length: 0,
+            is_dynamic: false,
+            is_partition_key: false,
+            default_value: default_value.map(|x| (x as i32).into())
         }
     }
 
-    pub fn new_int16(name: &str, description: &str) -> Self {
+    pub fn new_int16(name: &str, description: &str, default_value: Option<i16>) -> Self {
         Self {
             name: name.to_owned(),
             description: description.to_owned(),
@@ -243,10 +288,13 @@ impl FieldSchema {
             chunk_size: 1,
             dim: 1,
             max_length: 0,
+            is_dynamic: false,
+            is_partition_key: false,
+            default_value: default_value.map(|x| (x as i32).into())
         }
     }
 
-    pub fn new_int32(name: &str, description: &str) -> Self {
+    pub fn new_int32(name: &str, description: &str, default_value: Option<i32>) -> Self {
         Self {
             name: name.to_owned(),
             description: description.to_owned(),
@@ -256,10 +304,13 @@ impl FieldSchema {
             chunk_size: 1,
             dim: 1,
             max_length: 0,
+            is_dynamic: false,
+            is_partition_key: false,
+            default_value: default_value.map(|x| x.into())
         }
     }
 
-    pub fn new_int64(name: &str, description: &str) -> Self {
+    pub fn new_int64(name: &str, description: &str, default_value: Option<i64>) -> Self {
         Self {
             name: name.to_owned(),
             description: description.to_owned(),
@@ -269,6 +320,9 @@ impl FieldSchema {
             chunk_size: 1,
             dim: 1,
             max_length: 0,
+            is_dynamic: false,
+            is_partition_key: false,
+            default_value: default_value.map(|x| x.into())
         }
     }
 
@@ -282,6 +336,9 @@ impl FieldSchema {
             chunk_size: 1,
             dim: 1,
             max_length: 0,
+            is_dynamic: false,
+            is_partition_key: false,
+            default_value: None
         }
     }
 
@@ -300,10 +357,13 @@ impl FieldSchema {
             max_length,
             chunk_size: 1,
             dim: 1,
+            is_dynamic: false,
+            is_partition_key: false,
+            default_value: None
         }
     }
 
-    pub fn new_float(name: &str, description: &str) -> Self {
+    pub fn new_float(name: &str, description: &str, default_value: Option<f32>) -> Self {
         Self {
             name: name.to_owned(),
             description: description.to_owned(),
@@ -313,10 +373,13 @@ impl FieldSchema {
             chunk_size: 1,
             dim: 1,
             max_length: 0,
+            is_dynamic: false,
+            is_partition_key: false,
+            default_value: default_value.map(|x| x.into())
         }
     }
 
-    pub fn new_double(name: &str, description: &str) -> Self {
+    pub fn new_double(name: &str, description: &str, default_value: Option<f64>) -> Self {
         Self {
             name: name.to_owned(),
             description: description.to_owned(),
@@ -326,10 +389,13 @@ impl FieldSchema {
             chunk_size: 1,
             dim: 1,
             max_length: 0,
+            is_dynamic: false,
+            is_partition_key: false,
+            default_value: default_value.map(|x| x.into())
         }
     }
 
-    pub fn new_string(name: &str, description: &str) -> Self {
+    pub fn new_string(name: &str, description: &str, default_value: Option<impl ToString>) -> Self {
         Self {
             name: name.to_owned(),
             description: description.to_owned(),
@@ -339,12 +405,19 @@ impl FieldSchema {
             chunk_size: 1,
             dim: 1,
             max_length: 0,
+            is_dynamic: false,
+            is_partition_key: false,
+            default_value: default_value.map(|x| x.to_string().into())
         }
     }
 
-    pub fn new_varchar(name: &str, description: &str, max_length: i32) -> Self {
+    pub fn new_varchar(name: &str, description: &str, max_length: i32, default_value: Option<impl ToString>) -> Self {
         if max_length <= 0 {
             panic!("max_length should be positive");
+        }
+        let default_value = default_value.map(|x| x.to_string());
+        if default_value.as_ref().is_some_and(|d| d.len() > max_length as usize) {
+            panic!("default_value length should be less than max_length");
         }
 
         Self {
@@ -356,6 +429,9 @@ impl FieldSchema {
             auto_id: false,
             chunk_size: 1,
             dim: 1,
+            is_dynamic: false,
+            is_partition_key: false,
+            default_value: default_value.map(|x| x.into())
         }
     }
 
@@ -373,6 +449,9 @@ impl FieldSchema {
             is_primary: false,
             auto_id: false,
             max_length: 0,
+            is_dynamic: false,
+            is_partition_key: false,
+            default_value: None
         }
     }
 
@@ -390,6 +469,29 @@ impl FieldSchema {
             is_primary: false,
             auto_id: false,
             max_length: 0,
+            is_dynamic: false,
+            is_partition_key: false,
+            default_value: None
+        }
+    }
+
+    pub fn new_partition_varchar(name: &str, description: &str, max_length: i32) -> Self {
+        if max_length <= 0 {
+            panic!("max_length should be positive");
+        }
+
+        Self {
+            name: name.to_owned(),
+            description: description.to_owned(),
+            dtype: DataType::VarChar,
+            max_length,
+            is_primary: false,
+            auto_id: false,
+            chunk_size: 1,
+            dim: 1,
+            is_dynamic: false,
+            is_partition_key: true,
+            default_value: None
         }
     }
 }
@@ -418,6 +520,10 @@ impl From<FieldSchema> for schema::FieldSchema {
             index_params: Vec::new(),
             auto_id: fld.auto_id,
             state: FieldState::FieldCreated as _,
+            is_dynamic: fld.is_dynamic,
+            is_partition_key: fld.is_partition_key,
+            default_value: fld.default_value,
+            element_type: 0
         }
     }
 }
@@ -427,6 +533,7 @@ pub struct CollectionSchema {
     pub(crate) name: String,
     pub(crate) description: String,
     pub(crate) fields: Vec<FieldSchema>,
+    pub(crate) enable_dynamic_field: bool,
 }
 
 impl CollectionSchema {
@@ -476,6 +583,7 @@ impl From<CollectionSchema> for schema::CollectionSchema {
             auto_id: col.auto_id(),
             description: col.description,
             fields: col.fields.into_iter().map(Into::into).collect(),
+            enable_dynamic_field: col.enable_dynamic_field
         }
     }
 }
@@ -486,6 +594,7 @@ impl From<schema::CollectionSchema> for CollectionSchema {
             fields: v.fields.into_iter().map(Into::into).collect(),
             name: v.name,
             description: v.description,
+            enable_dynamic_field: v.enable_dynamic_field
         }
     }
 }
@@ -495,6 +604,7 @@ pub struct CollectionSchemaBuilder {
     name: String,
     description: String,
     inner: Vec<FieldSchema>,
+    enable_dynamic_field: bool
 }
 
 impl CollectionSchemaBuilder {
@@ -503,6 +613,7 @@ impl CollectionSchemaBuilder {
             name: name.to_owned(),
             description: description.to_owned(),
             inner: Vec::new(),
+            enable_dynamic_field: false
         }
     }
 
@@ -558,6 +669,11 @@ impl CollectionSchemaBuilder {
         Err(error::Error::from(Error::NoPrimaryKey))
     }
 
+    pub fn enable_dynamic_field(&mut self) -> &mut Self {
+        self.enable_dynamic_field = true;
+        self
+    }
+
     pub fn build(&mut self) -> Result<CollectionSchema> {
         let mut has_primary = false;
 
@@ -578,6 +694,7 @@ impl CollectionSchemaBuilder {
             fields: this.inner.into(),
             name: this.name,
             description: this.description,
+            enable_dynamic_field: this.enable_dynamic_field
         })
     }
 }

@@ -46,6 +46,7 @@ pub struct FieldColumn {
     pub value: ValueVec,
     pub dim: i64,
     pub max_length: i32,
+    pub is_dynamic: bool,
 }
 
 impl From<schema::FieldData> for FieldColumn {
@@ -57,7 +58,7 @@ impl From<schema::FieldData> for FieldColumn {
             .unwrap_or((None, None));
 
         let value: ValueVec = fd.field.map(Into::into).unwrap_or(ValueVec::None);
-        let dtype = DataType::from_i32(fd.r#type).unwrap_or(DataType::None);
+        let dtype = DataType::try_from(fd.r#type).unwrap_or(DataType::None);
 
         FieldColumn {
             name: fd.field_name,
@@ -72,12 +73,16 @@ impl From<schema::FieldData> for FieldColumn {
                 | DataType::Float
                 | DataType::Double
                 | DataType::String
-                | DataType::VarChar => 1,
+                | DataType::VarChar
+                | DataType::Array
+                | DataType::Json => 1,
                 DataType::BinaryVector => 256,
                 DataType::FloatVector => 128,
+                DataType::Float16Vector => 128,
             }),
             max_length: max_length.unwrap_or(0),
             value,
+            is_dynamic: fd.is_dynamic
         }
     }
 }
@@ -90,6 +95,7 @@ impl FieldColumn {
             value: v.into(),
             dim: schm.dim,
             max_length: schm.max_length,
+            is_dynamic: schm.is_dynamic
         }
     }
 
@@ -159,6 +165,7 @@ impl FieldColumn {
                 ValueVec::String(_) => ValueVec::String(Vec::new()),
                 ValueVec::Binary(_) => ValueVec::Binary(Vec::new()),
             },
+            is_dynamic: self.is_dynamic
         }
     }
 }
@@ -201,6 +208,7 @@ impl From<FieldColumn> for schema::FieldData {
                     dim: this.dim,
                 }),
             }),
+            is_dynamic: this.is_dynamic,
         }
     }
 }
