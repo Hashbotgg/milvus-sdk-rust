@@ -159,7 +159,7 @@ impl From<IndexDescription> for IndexInfo {
         Self {
             field_name: description.field_name.clone(),
             id: description.index_id,
-            params: params,
+            params,
             state: description.state(),
         }
     }

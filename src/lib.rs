@@ -18,12 +18,12 @@ pub mod client;
 pub mod collection;
 pub mod data;
 pub mod error;
+pub mod options;
 pub mod schema;
 pub mod value;
-pub mod options;
 
 mod config;
-pub mod proto;
-mod utils;
 pub mod index;
+pub mod proto;
 pub mod types;
+mod utils;

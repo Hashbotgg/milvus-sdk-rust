@@ -14,10 +14,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::proto::{common::{
-    ConsistencyLevel, DslType, IndexState, KeyValuePair, MsgBase, MsgType, PlaceholderGroup,
-    PlaceholderType, PlaceholderValue,
-}, milvus::DropPartitionRequest};
 use crate::proto::milvus::milvus_service_client::MilvusServiceClient;
 use crate::proto::milvus::{
     CreateCollectionRequest, CreateIndexRequest, CreatePartitionRequest,
@@ -28,6 +24,13 @@ use crate::proto::milvus::{
 };
 use crate::proto::schema::i_ds::IdField::{IntId, StrId};
 use crate::proto::schema::DataType;
+use crate::proto::{
+    common::{
+        ConsistencyLevel, DslType, IndexState, KeyValuePair, MsgBase, MsgType, PlaceholderGroup,
+        PlaceholderType, PlaceholderValue,
+    },
+    milvus::DropPartitionRequest,
+};
 use crate::schema::CollectionSchema;
 use crate::types::*;
 use crate::utils::status_to_result;
@@ -138,7 +141,7 @@ impl Collection {
                     collection_name: self.schema().name.clone(),
                     replica_number,
                     refresh: false,
-                    resource_groups: vec![]
+                    resource_groups: vec![],
                 })
                 .await?
                 .into_inner(),
@@ -333,7 +336,7 @@ impl Collection {
 
     pub async fn has_partition<P: AsRef<str>>(&self, p: P) -> Result<bool> {
         if self.partitions.lock().await.contains(p.as_ref()) {
-            return Ok(true);
+            Ok(true)
         } else {
             let res = self
                 .client
@@ -397,7 +400,7 @@ impl Collection {
                 base: None,
                 collection_name: self.schema().name.to_string(),
                 partition_names: partition_names.into_iter().map(|x| x.to_string()).collect(),
-                db_name: "".to_string()
+                db_name: "".to_string(),
             })
             .await?
             .into_inner();
@@ -425,10 +428,7 @@ impl Collection {
     }
 
     /// Drop partitions
-    pub async fn drop_partition<S: ToString>(
-        &self,
-        partition_name: S,
-    ) -> Result<()> {
+    pub async fn drop_partition<S: ToString>(&self, partition_name: S) -> Result<()> {
         status_to_result(&Some(
             self.client
                 .clone()
@@ -442,7 +442,6 @@ impl Collection {
                 .into_inner(),
         ))
     }
-
 
     pub async fn create(
         &self,
@@ -506,21 +505,26 @@ impl Collection {
 
         status_to_result(&res.status)?;
 
-        Ok(res
-            .fields_data
-            .into_iter()
-            .map(|f| FieldColumn::from(f))
-            .collect())
+        Ok(res.fields_data.into_iter().map(FieldColumn::from).collect())
     }
 
     pub async fn insert(
         &self,
-        fields_data: Vec<FieldColumn>,
+        field_columns: Vec<FieldColumn>,
         partition_name: Option<&str>,
     ) -> Result<crate::proto::milvus::MutationResult> {
         let partition_name = partition_name.unwrap_or("_default").to_owned();
-        let row_num = fields_data.first().map(|c| c.len()).unwrap_or(0);
+        let row_num = field_columns.first().map(|c| c.len()).unwrap_or(0);
 
+        let mut fields_data = Vec::new();
+        for dat in field_columns {
+            if dat.is_dynamic && !self.schema.enable_dynamic_field {
+                return Err(SuperError::Unexpected(
+                    "Dynamic fields aren't enabled for this collection!".to_owned(),
+                ));
+            }
+            fields_data.push(dat.into());
+        }
         let result = self
             .client
             .clone()
@@ -530,7 +534,7 @@ impl Collection {
                 collection_name: self.schema().name.to_string(),
                 partition_name,
                 num_rows: row_num as u32,
-                fields_data: fields_data.into_iter().map(|f| f.into()).collect(),
+                fields_data,
                 hash_keys: Vec::new(),
             })
             .await?
@@ -619,7 +623,7 @@ impl Collection {
                 consistency_level: consistency_level as _,
                 not_return_all_meta: false,
                 search_by_primary_keys: false,
-                use_default_consistency: false
+                use_default_consistency: false,
             })
             .await?
             .into_inner();
@@ -627,6 +631,10 @@ impl Collection {
         let raw_data = res
             .results
             .ok_or(SuperError::Unexpected("no result for search".to_owned()))?;
+
+        if raw_data.output_fields.is_empty() {
+            return Ok(Vec::new());
+        }
         let mut result = Vec::new();
         let mut offset = 0;
         let fields_data = raw_data
@@ -634,6 +642,7 @@ impl Collection {
             .into_iter()
             .map(Into::into)
             .collect::<Vec<FieldColumn>>();
+
         let raw_id = raw_data.ids.unwrap().id_field.unwrap();
 
         for k in raw_data.topks {
@@ -644,6 +653,7 @@ impl Collection {
                 .iter()
                 .map(FieldColumn::copy_with_metadata)
                 .collect::<Vec<FieldColumn>>();
+
             for j in 0..fields_data.len() {
                 for i in offset..offset + k {
                     result_data[j].push(fields_data[j].get(i).ok_or(SuperError::Unexpected(
@@ -834,6 +844,7 @@ impl SearchOption {
 }
 
 // search result for a single vector
+#[derive(Debug)]
 pub struct SearchResult<'a> {
     pub size: i64,
     pub id: Vec<Value<'a>>,
@@ -864,7 +875,7 @@ fn get_place_holder_group(vectors: Vec<Value>) -> Result<Vec<u8>> {
     };
     let mut buf = BytesMut::new();
     group.encode(&mut buf).unwrap();
-    return Ok(buf.to_vec());
+    Ok(buf.to_vec())
 }
 
 fn get_place_holder_value(vectors: Vec<Value>) -> Result<PlaceholderValue> {
@@ -874,7 +885,7 @@ fn get_place_holder_value(vectors: Vec<Value>) -> Result<PlaceholderValue> {
         values: Vec::new(),
     };
     // if no vectors, return an empty one
-    if vectors.len() == 0 {
+    if vectors.is_empty() {
         return Ok(place_holder);
     };
 
@@ -907,5 +918,5 @@ fn get_place_holder_value(vectors: Vec<Value>) -> Result<PlaceholderValue> {
             }
         };
     }
-    return Ok(place_holder);
+    Ok(place_holder)
 }

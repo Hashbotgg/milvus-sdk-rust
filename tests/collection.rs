@@ -19,6 +19,7 @@ use milvus::collection::{Collection, ParamValue, SearchOption};
 use milvus::data::FieldColumn;
 use milvus::error::Result;
 use milvus::index::{IndexParams, IndexType, MetricType};
+use milvus::value::ValueVec;
 use std::collections::HashMap;
 
 mod common;
@@ -31,7 +32,7 @@ async fn clean_test_collection(collection: Collection) -> Result<()> {
 
 #[tokio::test]
 async fn collection_basic() -> Result<()> {
-    let collection = create_test_collection().await?;
+    let collection = create_test_collection(false).await?;
 
     let embed_data = gen_random_f32_vector(DEFAULT_DIM * 2000);
 
@@ -66,7 +67,7 @@ async fn collection_basic() -> Result<()> {
 
 #[tokio::test]
 async fn collection_index() -> Result<()> {
-    let collection = create_test_collection().await?;
+    let collection = create_test_collection(false).await?;
 
     let feature = gen_random_f32_vector(DEFAULT_DIM * 2000);
 
@@ -102,7 +103,7 @@ async fn collection_index() -> Result<()> {
 
 #[tokio::test]
 async fn collection_search() -> Result<()> {
-    let collection = create_test_collection().await?;
+    let collection = create_test_collection(false).await?;
 
     let embed_data = gen_random_f32_vector(DEFAULT_DIM * 2000);
     let embed_column = FieldColumn::new(
@@ -146,7 +147,7 @@ async fn collection_search() -> Result<()> {
 
 #[tokio::test]
 async fn session_consistency() -> Result<()> {
-    let collection = create_test_collection().await?;
+    let collection = create_test_collection(false).await?;
 
     let embed_data = gen_random_f32_vector(DEFAULT_DIM * 2000);
     let embed_column = FieldColumn::new(
@@ -190,7 +191,7 @@ async fn session_consistency() -> Result<()> {
 
 #[tokio::test]
 async fn test_partition() -> Result<()> {
-    let collection = create_test_collection().await?;
+    let collection = create_test_collection(false).await?;
     let part_name = "novel";
     let embed_data = gen_random_f32_vector(DEFAULT_DIM * 2000);
     let embed_column = FieldColumn::new(
@@ -219,5 +220,72 @@ async fn test_partition() -> Result<()> {
     collection.release_partitions(vec![part_name]).await?;
     collection.drop_partition(part_name).await?;
     collection.drop().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn collection_dynamic_schema() -> Result<()> {
+    let collection = create_test_collection(true).await?;
+
+    let embed_data = gen_random_f32_vector(DEFAULT_DIM * 2000);
+    let embed_column = FieldColumn::new(
+        collection.schema().get_field(DEFAULT_VEC_FIELD).unwrap(),
+        embed_data,
+    );
+    let make_row = || {
+        let mut m = serde_json::Map::new();
+        m.insert("dyn_field".to_string(), serde_json::Value::from(1.0f32));
+        m
+    };
+
+    let dyn_col = FieldColumn::new_dynamic((0..2000).map(|_| make_row()).collect());
+
+    collection.insert(vec![embed_column, dyn_col], None).await?;
+    collection.flush().await?;
+    let index_params = IndexParams::new(
+        "ivf_flat".to_owned(),
+        IndexType::IvfFlat,
+        MetricType::L2,
+        HashMap::from_iter([("nlist".to_owned(), 32.to_string())]),
+    );
+    collection
+        .create_index(DEFAULT_VEC_FIELD, index_params)
+        .await?;
+    collection.flush().await?;
+    collection.load(1).await?;
+
+    let mut option = SearchOption::default();
+    option.add_param("nprobe", ParamValue!(16));
+    let query_vec = gen_random_f32_vector(DEFAULT_DIM);
+    let result = collection
+        .search(
+            vec![query_vec.into()],
+            DEFAULT_VEC_FIELD,
+            10,
+            MetricType::L2,
+            vec!["id", "dyn_field"],
+            &option,
+        )
+        .await?;
+
+    assert_eq!(result[0].size, 10);
+    dbg!(&result);
+    let dyn_field = &result[0]
+        .field
+        .iter()
+        .find(|x| x.name == "$meta")
+        .unwrap()
+        .value;
+    assert_eq!(dyn_field.len(), 10);
+    let ValueVec::Json(ref dyn_fields) = dyn_field else {
+        panic!()
+    };
+    let f = dyn_fields
+        .iter()
+        .map(|x| x["dyn_field"].as_f64().unwrap() as f32)
+        .collect::<Vec<_>>();
+    assert_eq!(f, &[1.0f32; 10]);
+
+    clean_test_collection(collection).await?;
     Ok(())
 }

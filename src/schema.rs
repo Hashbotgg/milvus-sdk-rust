@@ -14,9 +14,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{error, proto::schema::ValueField};
 use crate::error::Result;
-use crate::proto::schema::{FieldState, value_field};
+use crate::proto::schema::{value_field, FieldState};
+use crate::{error, proto::schema::ValueField};
 use prost::alloc::vec::Vec;
 use prost::encoding::bool;
 use thiserror::Error as ThisError;
@@ -147,10 +147,10 @@ pub trait IntoFieldData {
 
 macro_rules! impl_value_field {
     ($typ: ty => $variant: ident) => {
-        impl Into<ValueField> for $typ {
-            fn into(self) -> ValueField {
+        impl From<$typ> for ValueField {
+            fn from(v: $typ) -> ValueField {
                 ValueField {
-                    data: Some(value_field::Data::$variant(self))
+                    data: Some(value_field::Data::$variant(v)),
                 }
             }
         }
@@ -159,7 +159,7 @@ macro_rules! impl_value_field {
             fn try_from(v: ValueField) -> Result<Self> {
                 match v.data {
                     Some(value_field::Data::$variant(v)) => Ok(v),
-                    _ => Err(error::Error::from(error::Error::Conversion))
+                    _ => Err(error::Error::from(error::Error::Conversion)),
                 }
             }
         }
@@ -174,7 +174,6 @@ impl_value_field!(f64 => DoubleData);
 impl_value_field!(String => StringData);
 impl_value_field!(Vec<u8> => BytesData);
 
-
 #[derive(Debug, Clone)]
 pub struct FieldSchema {
     pub name: String,
@@ -187,7 +186,7 @@ pub struct FieldSchema {
     pub max_length: i32, // only for VarChar
     pub is_dynamic: bool,
     pub is_partition_key: bool,
-    pub default_value: Option<ValueField>
+    pub default_value: Option<ValueField>,
 }
 
 impl FieldSchema {
@@ -203,7 +202,7 @@ impl FieldSchema {
             max_length: 0,
             is_dynamic: false,
             is_partition_key: false,
-            default_value: None
+            default_value: None,
         }
     }
 }
@@ -240,7 +239,7 @@ impl From<schema::FieldSchema> for FieldSchema {
             dim,
             is_dynamic: fld.is_dynamic,
             is_partition_key: fld.is_partition_key,
-            default_value: fld.default_value
+            default_value: fld.default_value,
         }
     }
 }
@@ -258,7 +257,7 @@ impl FieldSchema {
             max_length: 0,
             is_dynamic: false,
             is_partition_key: false,
-            default_value: default_value.map(|x| x.into())
+            default_value: default_value.map(|x| x.into()),
         }
     }
 
@@ -274,7 +273,7 @@ impl FieldSchema {
             max_length: 0,
             is_dynamic: false,
             is_partition_key: false,
-            default_value: default_value.map(|x| (x as i32).into())
+            default_value: default_value.map(|x| (x as i32).into()),
         }
     }
 
@@ -290,7 +289,7 @@ impl FieldSchema {
             max_length: 0,
             is_dynamic: false,
             is_partition_key: false,
-            default_value: default_value.map(|x| (x as i32).into())
+            default_value: default_value.map(|x| (x as i32).into()),
         }
     }
 
@@ -306,7 +305,7 @@ impl FieldSchema {
             max_length: 0,
             is_dynamic: false,
             is_partition_key: false,
-            default_value: default_value.map(|x| x.into())
+            default_value: default_value.map(|x| x.into()),
         }
     }
 
@@ -322,7 +321,7 @@ impl FieldSchema {
             max_length: 0,
             is_dynamic: false,
             is_partition_key: false,
-            default_value: default_value.map(|x| x.into())
+            default_value: default_value.map(|x| x.into()),
         }
     }
 
@@ -338,7 +337,7 @@ impl FieldSchema {
             max_length: 0,
             is_dynamic: false,
             is_partition_key: false,
-            default_value: None
+            default_value: None,
         }
     }
 
@@ -359,7 +358,7 @@ impl FieldSchema {
             dim: 1,
             is_dynamic: false,
             is_partition_key: false,
-            default_value: None
+            default_value: None,
         }
     }
 
@@ -375,7 +374,7 @@ impl FieldSchema {
             max_length: 0,
             is_dynamic: false,
             is_partition_key: false,
-            default_value: default_value.map(|x| x.into())
+            default_value: default_value.map(|x| x.into()),
         }
     }
 
@@ -391,7 +390,7 @@ impl FieldSchema {
             max_length: 0,
             is_dynamic: false,
             is_partition_key: false,
-            default_value: default_value.map(|x| x.into())
+            default_value: default_value.map(|x| x.into()),
         }
     }
 
@@ -407,16 +406,24 @@ impl FieldSchema {
             max_length: 0,
             is_dynamic: false,
             is_partition_key: false,
-            default_value: default_value.map(|x| x.to_string().into())
+            default_value: default_value.map(|x| x.to_string().into()),
         }
     }
 
-    pub fn new_varchar(name: &str, description: &str, max_length: i32, default_value: Option<impl ToString>) -> Self {
+    pub fn new_varchar(
+        name: &str,
+        description: &str,
+        max_length: i32,
+        default_value: Option<impl ToString>,
+    ) -> Self {
         if max_length <= 0 {
             panic!("max_length should be positive");
         }
         let default_value = default_value.map(|x| x.to_string());
-        if default_value.as_ref().is_some_and(|d| d.len() > max_length as usize) {
+        if default_value
+            .as_ref()
+            .is_some_and(|d| d.len() > max_length as usize)
+        {
             panic!("default_value length should be less than max_length");
         }
 
@@ -431,7 +438,7 @@ impl FieldSchema {
             dim: 1,
             is_dynamic: false,
             is_partition_key: false,
-            default_value: default_value.map(|x| x.into())
+            default_value: default_value.map(|x| x.into()),
         }
     }
 
@@ -451,7 +458,7 @@ impl FieldSchema {
             max_length: 0,
             is_dynamic: false,
             is_partition_key: false,
-            default_value: None
+            default_value: None,
         }
     }
 
@@ -471,7 +478,7 @@ impl FieldSchema {
             max_length: 0,
             is_dynamic: false,
             is_partition_key: false,
-            default_value: None
+            default_value: None,
         }
     }
 
@@ -491,7 +498,7 @@ impl FieldSchema {
             dim: 1,
             is_dynamic: false,
             is_partition_key: true,
-            default_value: None
+            default_value: None,
         }
     }
 }
@@ -512,7 +519,7 @@ impl From<FieldSchema> for schema::FieldSchema {
 
         schema::FieldSchema {
             field_id: 0,
-            name: fld.name.into(),
+            name: fld.name,
             is_primary_key: fld.is_primary,
             description: fld.description,
             data_type: fld.dtype as i32,
@@ -523,7 +530,7 @@ impl From<FieldSchema> for schema::FieldSchema {
             is_dynamic: fld.is_dynamic,
             is_partition_key: fld.is_partition_key,
             default_value: fld.default_value,
-            element_type: 0
+            element_type: 0,
         }
     }
 }
@@ -547,7 +554,7 @@ impl CollectionSchema {
     }
 
     pub fn validate(&self) -> Result<()> {
-        self.primary_column().ok_or_else(|| Error::NoPrimaryKey)?;
+        self.primary_column().ok_or(Error::NoPrimaryKey)?;
         // TODO addidtional schema checks need to be added here
         Ok(())
     }
@@ -572,7 +579,7 @@ impl CollectionSchema {
                 }
             }
         }
-        return Err(error::Error::from(Error::NoSuchKey(field_name.to_owned())));
+        Err(error::Error::from(Error::NoSuchKey(field_name.to_owned())))
     }
 }
 
@@ -583,7 +590,7 @@ impl From<CollectionSchema> for schema::CollectionSchema {
             auto_id: col.auto_id(),
             description: col.description,
             fields: col.fields.into_iter().map(Into::into).collect(),
-            enable_dynamic_field: col.enable_dynamic_field
+            enable_dynamic_field: col.enable_dynamic_field,
         }
     }
 }
@@ -594,7 +601,7 @@ impl From<schema::CollectionSchema> for CollectionSchema {
             fields: v.fields.into_iter().map(Into::into).collect(),
             name: v.name,
             description: v.description,
-            enable_dynamic_field: v.enable_dynamic_field
+            enable_dynamic_field: v.enable_dynamic_field,
         }
     }
 }
@@ -604,7 +611,7 @@ pub struct CollectionSchemaBuilder {
     name: String,
     description: String,
     inner: Vec<FieldSchema>,
-    enable_dynamic_field: bool
+    enable_dynamic_field: bool,
 }
 
 impl CollectionSchemaBuilder {
@@ -613,7 +620,7 @@ impl CollectionSchemaBuilder {
             name: name.to_owned(),
             description: description.to_owned(),
             inner: Vec::new(),
-            enable_dynamic_field: false
+            enable_dynamic_field: false,
         }
     }
 
@@ -688,13 +695,13 @@ impl CollectionSchemaBuilder {
             return Err(error::Error::from(Error::NoPrimaryKey));
         }
 
-        let this = std::mem::replace(self, CollectionSchemaBuilder::new("".into(), ""));
+        let this = std::mem::replace(self, CollectionSchemaBuilder::new("", ""));
 
         Ok(CollectionSchema {
-            fields: this.inner.into(),
+            fields: this.inner,
             name: this.name,
             description: this.description,
-            enable_dynamic_field: this.enable_dynamic_field
+            enable_dynamic_field: this.enable_dynamic_field,
         })
     }
 }

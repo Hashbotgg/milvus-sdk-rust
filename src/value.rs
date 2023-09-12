@@ -1,12 +1,10 @@
 use std::borrow::Cow;
 
-use crate::{
-    proto::schema::{
-        field_data::Field, scalar_field::Data as ScalarData, vector_field::Data as VectorData,
-        DataType,
-    },
+use crate::proto::schema::{
+    field_data::Field, scalar_field::Data as ScalarData, vector_field::Data as VectorData, DataType,
 };
 
+#[derive(Debug)]
 pub enum Value<'a> {
     None,
     Bool(bool),
@@ -19,6 +17,7 @@ pub enum Value<'a> {
     FloatArray(Cow<'a, [f32]>),
     Binary(Cow<'a, [u8]>),
     String(Cow<'a, str>),
+    Json(serde_json::Value),
 }
 
 macro_rules! impl_from_for_field_data_column {
@@ -55,6 +54,7 @@ impl Value<'_> {
             Value::String(_) => DataType::String,
             Value::FloatArray(_) => DataType::FloatVector,
             Value::Binary(_) => DataType::BinaryVector,
+            Value::Json(_) => DataType::Json,
         }
     }
 }
@@ -105,6 +105,7 @@ pub enum ValueVec {
     Double(Vec<f64>),
     Binary(Vec<u8>),
     String(Vec<String>),
+    Json(Vec<serde_json::Value>),
 }
 
 macro_rules! impl_from_for_value_vec {
@@ -124,7 +125,8 @@ impl_from_for_value_vec! {
     Vec<String>, String,
     Vec<u8>, Binary,
     Vec<f32>, Float,
-    Vec<f64>, Double
+    Vec<f64>, Double,
+    Vec<serde_json::Value>, Json
 }
 
 macro_rules! impl_try_from_for_value_vec {
@@ -148,7 +150,8 @@ impl_try_from_for_value_vec! {
     String, Vec<String>,
     Binary, Vec<u8>,
     Float, Vec<f32>,
-    Double, Vec<f64>
+    Double, Vec<f64>,
+    Json, Vec<serde_json::Value>
 }
 
 impl From<Vec<i8>> for ValueVec {
@@ -180,26 +183,26 @@ impl ValueVec {
             DataType::FloatVector => Self::Float(Vec::new()),
             DataType::Float16Vector => unimplemented!(),
             DataType::Array => unimplemented!(),
-            DataType::Json => unimplemented!(),
+            DataType::Json => Self::Json(Vec::new()),
         }
     }
 
     pub fn check_dtype(&self, dtype: DataType) -> bool {
-        match (self, dtype) {
+        matches!(
+            (self, dtype),
             (ValueVec::Binary(..), DataType::BinaryVector)
-            | (ValueVec::Float(..), DataType::FloatVector)
-            | (ValueVec::Float(..), DataType::Float)
-            | (ValueVec::Int(..), DataType::Int8)
-            | (ValueVec::Int(..), DataType::Int16)
-            | (ValueVec::Int(..), DataType::Int32)
-            | (ValueVec::Long(..), DataType::Int64)
-            | (ValueVec::Bool(..), DataType::Bool)
-            | (ValueVec::String(..), DataType::String)
-            | (ValueVec::String(..), DataType::VarChar)
-            | (ValueVec::None, _)
-            | (ValueVec::Double(..), DataType::Double) => true,
-            _ => false,
-        }
+                | (ValueVec::Float(..), DataType::FloatVector)
+                | (ValueVec::Float(..), DataType::Float)
+                | (ValueVec::Int(..), DataType::Int8)
+                | (ValueVec::Int(..), DataType::Int16)
+                | (ValueVec::Int(..), DataType::Int32)
+                | (ValueVec::Long(..), DataType::Int64)
+                | (ValueVec::Bool(..), DataType::Bool)
+                | (ValueVec::String(..), DataType::String)
+                | (ValueVec::String(..), DataType::VarChar)
+                | (ValueVec::None, _)
+                | (ValueVec::Double(..), DataType::Double)
+        )
     }
 
     #[inline]
@@ -217,6 +220,7 @@ impl ValueVec {
             ValueVec::Double(v) => v.len(),
             ValueVec::Binary(v) => v.len(),
             ValueVec::String(v) => v.len(),
+            ValueVec::Json(v) => v.len(),
         }
     }
 
@@ -230,6 +234,7 @@ impl ValueVec {
             ValueVec::Double(v) => v.clear(),
             ValueVec::Binary(v) => v.clear(),
             ValueVec::String(v) => v.clear(),
+            ValueVec::Json(v) => v.clear(),
         }
     }
 }
@@ -247,7 +252,12 @@ impl From<Field> for ValueVec {
                     ScalarData::StringData(v) => Self::String(v.data),
                     ScalarData::BytesData(_) => unimplemented!(),
                     ScalarData::ArrayData(_) => unimplemented!(),
-                    ScalarData::JsonData(_) => unimplemented!(),
+                    ScalarData::JsonData(v) => Self::Json(
+                        v.data
+                            .into_iter()
+                            .map(|el| serde_json::from_slice(&el).unwrap())
+                            .collect(),
+                    ),
                 },
                 None => Self::None,
             },

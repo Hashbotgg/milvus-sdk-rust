@@ -63,7 +63,7 @@ impl From<schema::FieldData> for FieldColumn {
         FieldColumn {
             name: fd.field_name,
             dtype,
-            dim: dim.unwrap_or_else(|| match dtype {
+            dim: dim.unwrap_or(match dtype {
                 DataType::None => 0,
                 DataType::Bool
                 | DataType::Int8
@@ -82,7 +82,7 @@ impl From<schema::FieldData> for FieldColumn {
             }),
             max_length: max_length.unwrap_or(0),
             value,
-            is_dynamic: fd.is_dynamic
+            is_dynamic: fd.is_dynamic,
         }
     }
 }
@@ -95,7 +95,19 @@ impl FieldColumn {
             value: v.into(),
             dim: schm.dim,
             max_length: schm.max_length,
-            is_dynamic: schm.is_dynamic
+            is_dynamic: schm.is_dynamic,
+        }
+    }
+
+    pub fn new_dynamic(v: Vec<serde_json::Map<String, serde_json::Value>>) -> FieldColumn {
+        let value = ValueVec::Json(v.into_iter().map(serde_json::Value::Object).collect());
+        FieldColumn {
+            name: "".to_string(),
+            dtype: DataType::Json,
+            value,
+            is_dynamic: true,
+            dim: 0,
+            max_length: 0,
         }
     }
 
@@ -124,6 +136,7 @@ impl FieldColumn {
                 Value::Binary(Cow::Borrowed(&v[idx * dim..idx * dim + dim]))
             }
             ValueVec::String(v) => Value::String(Cow::Borrowed(v.get(idx)?.as_ref())),
+            ValueVec::Json(v) => Value::Json(v.get(idx)?.clone()),
         })
     }
 
@@ -140,6 +153,7 @@ impl FieldColumn {
             (ValueVec::String(vec), Value::String(i)) => vec.push(i.to_string()),
             (ValueVec::Binary(vec), Value::Binary(i)) => vec.extend_from_slice(i.as_ref()),
             (ValueVec::Float(vec), Value::FloatArray(i)) => vec.extend_from_slice(i.as_ref()),
+            (ValueVec::Json(vec), Value::Json(i)) => vec.push(i),
             _ => panic!("column type mismatch"),
         }
     }
@@ -147,6 +161,11 @@ impl FieldColumn {
     #[inline]
     pub fn len(&self) -> usize {
         self.value.len() / self.dim as usize
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.value.is_empty()
     }
 
     pub fn copy_with_metadata(&self) -> Self {
@@ -164,8 +183,9 @@ impl FieldColumn {
                 ValueVec::Double(_) => ValueVec::Double(Vec::new()),
                 ValueVec::String(_) => ValueVec::String(Vec::new()),
                 ValueVec::Binary(_) => ValueVec::Binary(Vec::new()),
+                ValueVec::Json(_) => ValueVec::Json(Vec::new()),
             },
-            is_dynamic: self.is_dynamic
+            is_dynamic: self.is_dynamic,
         }
     }
 }
@@ -206,6 +226,14 @@ impl From<FieldColumn> for schema::FieldData {
                 ValueVec::Binary(v) => Field::Vectors(VectorField {
                     data: Some(VectorData::BinaryVector(v)),
                     dim: this.dim,
+                }),
+                ValueVec::Json(v) => Field::Scalars(ScalarField {
+                    data: Some(ScalarData::JsonData(schema::JsonArray {
+                        data: v
+                            .into_iter()
+                            .map(|x| serde_json::to_vec(&x).unwrap())
+                            .collect(),
+                    })),
                 }),
             }),
             is_dynamic: this.is_dynamic,

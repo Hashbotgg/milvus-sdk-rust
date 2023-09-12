@@ -122,10 +122,8 @@ pub struct ClientInfo {
     pub host: ::prost::alloc::string::String,
     /// reserved for newly-added feature if necessary.
     #[prost(map = "string, string", tag = "6")]
-    pub reserved: ::std::collections::HashMap<
-        ::prost::alloc::string::String,
-        ::prost::alloc::string::String,
-    >,
+    pub reserved:
+        ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -142,10 +140,8 @@ pub struct ServerInfo {
     pub deploy_mode: ::prost::alloc::string::String,
     /// reserved for newly-added feature if necessary.
     #[prost(map = "string, string", tag = "6")]
-    pub reserved: ::std::collections::HashMap<
-        ::prost::alloc::string::String,
-        ::prost::alloc::string::String,
-    >,
+    pub reserved:
+        ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
 }
 /// Deprecated
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
@@ -1047,13 +1043,9 @@ impl ObjectPrivilege {
             ObjectPrivilege::PrivilegeManageOwnership => "PrivilegeManageOwnership",
             ObjectPrivilege::PrivilegeSelectUser => "PrivilegeSelectUser",
             ObjectPrivilege::PrivilegeUpsert => "PrivilegeUpsert",
-            ObjectPrivilege::PrivilegeCreateResourceGroup => {
-                "PrivilegeCreateResourceGroup"
-            }
+            ObjectPrivilege::PrivilegeCreateResourceGroup => "PrivilegeCreateResourceGroup",
             ObjectPrivilege::PrivilegeDropResourceGroup => "PrivilegeDropResourceGroup",
-            ObjectPrivilege::PrivilegeDescribeResourceGroup => {
-                "PrivilegeDescribeResourceGroup"
-            }
+            ObjectPrivilege::PrivilegeDescribeResourceGroup => "PrivilegeDescribeResourceGroup",
             ObjectPrivilege::PrivilegeListResourceGroups => "PrivilegeListResourceGroups",
             ObjectPrivilege::PrivilegeTransferNode => "PrivilegeTransferNode",
             ObjectPrivilege::PrivilegeTransferReplica => "PrivilegeTransferReplica",
@@ -1097,9 +1089,7 @@ impl ObjectPrivilege {
             "PrivilegeUpsert" => Some(Self::PrivilegeUpsert),
             "PrivilegeCreateResourceGroup" => Some(Self::PrivilegeCreateResourceGroup),
             "PrivilegeDropResourceGroup" => Some(Self::PrivilegeDropResourceGroup),
-            "PrivilegeDescribeResourceGroup" => {
-                Some(Self::PrivilegeDescribeResourceGroup)
-            }
+            "PrivilegeDescribeResourceGroup" => Some(Self::PrivilegeDescribeResourceGroup),
             "PrivilegeListResourceGroups" => Some(Self::PrivilegeListResourceGroups),
             "PrivilegeTransferNode" => Some(Self::PrivilegeTransferNode),
             "PrivilegeTransferReplica" => Some(Self::PrivilegeTransferReplica),
